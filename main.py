@@ -1,35 +1,29 @@
-from retrieval import StartupRetriever
+from retrieval import StartupRetriever, DATA_PATH
 from llm import answer_question
-
-TOP_K = 5
 
 
 def main():
-    print("Startup Dataset Q&A Bot (TF-IDF retrieval + OpenAI synthesis)")
-    print("Dataset: Startups in India (Kaggle)")
-    print("Type 'exit' to quit.\n")
-
-    retriever = StartupRetriever()
-
+    print("Startup Diligence Copilot - Dataset Research")
+    print("Developed by Samisha Boywar")
+    print("Dataset: Ashish Raut / Indian Startups Top 300 (historical snapshot)")
+    print("Dataset research only; no independent verification or market sizing. Type exit to quit.")
+    try:
+        retriever = StartupRetriever()
+    except (OSError, ValueError) as exc:
+        print(f"{exc}\nRun: python retrieval.py --download\nExpected file: {DATA_PATH}")
+        return
     while True:
-        question = input("Ask a question: ").strip()
+        try:
+            question = input("Ask a question: ").strip()
+        except (EOFError, KeyboardInterrupt):
+            break
         if question.lower() in {"exit", "quit"}:
             break
         if not question:
             continue
-
-        results = retriever.retrieve(question, k=TOP_K)
-
-        print("\n--- Retrieved rows (TF-IDF + cosine similarity) ---")
-        if results.empty:
-            print("No matching rows found.")
-        else:
-            for _, row in results.iterrows():
-                print(f"[{row['similarity']:.3f}] {row['Name of the startup']} ({row['Sector']}) - {row['Location of company']}")
-
-        print("\n--- LLM Answer ---")
+        results = retriever.retrieve(question, k=5)
+        print(results[["source_row", "Company", "Industries", "City", "similarity"]].to_string(index=False))
         print(answer_question(question, results))
-        print("\n" + "=" * 60 + "\n")
 
 
 if __name__ == "__main__":
