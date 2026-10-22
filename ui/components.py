@@ -1,13 +1,15 @@
+import base64
 import html
 import json
 from pathlib import Path
 import pandas as pd
 import streamlit as st
-from retrieval import REQUIRED
+from retrieval import REQUIRED, SOURCE
 from llm import answer_question
 
 COLUMNS = ["source_row"] + REQUIRED
 FUNDING = "Funding Amount in $"
+ASSETS = Path(__file__).resolve().parent.parent / "assets"
 QUERY_MODES = {
     "Free-form question": None,
     "Find startups by sector": "Which startups in the dataset work in the {sector} sector?",
@@ -24,28 +26,46 @@ def render(markup):
     st.markdown(" ".join(line.strip() for line in markup.splitlines()), unsafe_allow_html=True)
 
 
+@st.cache_resource(show_spinner=False)
+def background_css():
+    for name in ("background.jpg", "background.jpeg", "background.png"):
+        path = ASSETS / name
+        if path.exists():
+            mime = "image/png" if path.suffix == ".png" else "image/jpeg"
+            data = base64.b64encode(path.read_bytes()).decode()
+            return (
+                ".stApp{background:linear-gradient(rgba(10,18,28,.55),rgba(10,18,28,.78)),"
+                f"url('data:{mime};base64,{data}') left top / 125% auto no-repeat fixed #0e1620;}}"
+            )
+    return ".stApp{background:linear-gradient(160deg,#16202b,#0e1620);}"
+
+
 def apply_styles():
-    st.markdown("<style>" + Path(__file__).with_name("styles.css").read_text(encoding="utf-8") + "</style>", unsafe_allow_html=True)
+    css = Path(__file__).with_name("styles.css").read_text(encoding="utf-8")
+    st.markdown("<style>" + css + background_css() + "</style>", unsafe_allow_html=True)
 
 
-def sidebar_brand():
-    render('<div class="brand"><div class="brand-logo">🚀</div><div class="brand-name">Startup Diligence Copilot</div></div>')
-    render('<div class="side-note">Dataset research for Indian startups. Evidence-first, never invented.</div>')
+def sidebar_info(retriever):
+    with st.sidebar:
+        render('<div class="side-title">Startup Diligence Copilot</div>')
+        render('<div class="side-note">Dataset research on Indian startups.</div>')
+        render('<div class="side-label">Dataset</div>')
+        st.markdown(f"[Indian Startups Top 300]({SOURCE}) by Ashish Raut")
+        render(f'<div class="side-note">{len(retriever.df)} clean records loaded. Historical snapshot, not live company data.</div>')
+        render('<div class="side-label">Author</div>')
+        render('<div class="side-note">Samisha Boywar</div>')
 
 
 def hero():
     render(
-        '<div class="hero"><div class="hero-badge">Dataset research prototype</div>'
-        "<h1>Research Indian startups with evidence you can trace.</h1>"
-        "<p>Explore, compare and question the Indian Startups Top 300 dataset. Every answer points back to the exact record it came from.</p>"
-        '<div class="hero-chips"><span class="chip-w">🔎 TF-IDF retrieval</span><span class="chip-w">📌 Record-level citations</span>'
-        '<span class="chip-w">📊 Funding insights</span><span class="chip-w">🧹 Transparent cleaning</span></div></div>'
+        '<div class="hero"><div class="hero-eyebrow">Dataset research</div>'
+        "<h1>Startup Diligence Copilot</h1>"
+        "<p>Explore, compare and question the Indian Startups Top 300 dataset. Each answer cites the dataset record it relies on.</p></div>"
     )
 
 
 def notice(kind, text):
-    icon = {"info": "ℹ️", "warn": "⚠️", "ok": "✅"}[kind]
-    render(f'<div class="notice {kind}"><div>{icon}</div><div>{text}</div></div>')
+    render(f'<div class="notice {kind}">{text}</div>')
 
 
 def section(title, subtitle):
@@ -53,12 +73,12 @@ def section(title, subtitle):
 
 
 def stat_cards(items):
-    cards = "".join(f'<div class="stat"><div class="stat-ic">{icon}</div><div class="stat-label">{esc(label)}</div><div class="stat-value">{esc(value)}</div></div>' for icon, label, value in items)
+    cards = "".join(f'<div class="stat"><div class="stat-label">{esc(label)}</div><div class="stat-value">{esc(value)}</div></div>' for label, value in items)
     render(f'<div class="stats">{cards}</div>')
 
 
-def empty_state(icon, title, text):
-    render(f'<div class="empty"><div class="em-ic">{icon}</div><b>{esc(title)}</b>{esc(text)}</div>')
+def empty_state(title, text):
+    render(f'<div class="empty"><b>{esc(title)}</b>{esc(text)}</div>')
 
 
 def money(value):
@@ -70,24 +90,22 @@ def whole(value):
 
 
 def startup_card(row, rank=None, similarity=None):
-    name = esc(row["Company"])
-    initial = esc(str(row["Company"])[:1].upper() or "?")
     employees = esc(row["No. of Employees"])
     parts = [esc(row["City"])]
     if pd.notna(row["Starting Year"]):
         parts.append(f"Founded {whole(row['Starting Year'])}")
     if employees:
         parts.append(f"{employees} employees")
-    meta = " · ".join(p for p in parts if p)
+    meta = " &middot; ".join(p for p in parts if p)
     tags = [t.strip() for t in str(row["Industries"]).split(",") if t.strip()][:4]
-    pills = "".join(f'<span class="pill {"p1" if i % 2 == 0 else "p2"}">{esc(t)}</span>' for i, t in enumerate(tags))
+    pills = "".join(f'<span class="tag">{esc(t)}</span>' for t in tags)
     text = "" if pd.isna(row["Description"]) else str(row["Description"])
-    description = esc(text[:330] + ("…" if len(text) > 330 else "")) or "No description in dataset."
-    label = f'Record {int(row["source_row"])}' if rank is None else f'#{rank} · Record {int(row["source_row"])}'
+    description = esc(text[:330] + ("..." if len(text) > 330 else "")) or "No description in dataset."
+    label = f'Record {int(row["source_row"])}' if rank is None else f'#{rank} &middot; Record {int(row["source_row"])}'
     bar = ""
     if similarity is not None:
         width = max(4, min(100, similarity * 100))
-        bar = f'<div class="sim" title="Cosine similarity"><div style="width:{width:.0f}%"></div></div><div class="sc-meta">Similarity {similarity:.3f}</div>'
+        bar = f'<div class="sim"><div style="width:{width:.0f}%"></div></div><div class="sc-meta">Similarity {similarity:.3f}</div>'
     founders = esc(row["Founders"]) or "N/A"
     facts = (
         f'<div class="fact"><b>{money(row[FUNDING])}</b><span>Funding</span></div>'
@@ -96,9 +114,8 @@ def startup_card(row, rank=None, similarity=None):
         f'<div class="fact"><b>{founders}</b><span>Founders</span></div>'
     )
     render(
-        f'<div class="sc"><div class="sc-top"><div class="sc-left"><div class="avatar">{initial}</div><div>'
-        f'<div class="sc-name">{name}</div><div class="sc-meta">{meta}</div></div></div>'
-        f'<div style="text-align:right"><span class="rank">{label}</span>{bar}</div></div>'
+        f'<div class="sc"><div class="sc-top"><div><div class="sc-name">{esc(row["Company"])}</div><div class="sc-meta">{meta}</div></div>'
+        f'<div style="text-align:right"><div class="rank">{label}</div>{bar}</div></div>'
         f'<div class="sc-desc">{description}</div><div>{pills}</div><div class="facts">{facts}</div></div>'
     )
 
@@ -113,23 +130,21 @@ def export_csv(label, df, filename, key):
 
 def answer_panel(text):
     with st.container(border=True):
-        render('<div class="ans-head"><span class="ans-dot"></span>Grounded answer</div>')
+        render('<div class="ans-head">Grounded answer</div>')
         st.markdown(text)
 
 
 def overview(df):
     cities = df.loc[df.City.ne(""), "City"].nunique()
-    stat_cards([("🏢", "Startups indexed", f"{len(df):,}"), ("📍", "Cities", f"{cities:,}"), ("💰", "Funding known", f"{df[FUNDING].notna().sum():,} / {len(df):,}")])
+    stat_cards([("Startups", f"{len(df):,}"), ("Cities", f"{cities:,}"), ("Funding known", f"{df[FUNDING].notna().sum():,} / {len(df):,}")])
 
 
 def render_audit(retriever):
     df = retriever.df
-    section("Data preparation and audit", "See exactly how the dataset was cleaned before analysis.")
-    stat_cards([("📥", "Raw records", retriever.report["raw_rows"]), ("✨", "Clean records", len(df)), ("🧩", "Fields analysed", len(REQUIRED))])
-    with st.container(border=True):
-        st.markdown("##### How the data is cleaned")
-        st.write("Whitespace and missing-value markers are normalised. Currency symbols and commas are removed before numeric conversion. Missing or invalid numbers stay missing, not zero. Empty company names are removed; case-insensitive duplicate company names keep their first record.")
-        st.write("Employee ranges remain text. Industry labels are split only for frequency analysis. No model training or credibility scoring is performed.")
+    section("Data preparation and audit", "How the dataset was cleaned before analysis.")
+    stat_cards([("Raw records", retriever.report["raw_rows"]), ("Clean records", len(df)), ("Fields analysed", len(REQUIRED))])
+    st.write("Whitespace and missing-value markers are normalised. Currency symbols and commas are removed before numeric conversion. Missing or invalid numbers stay missing, not zero. Empty company names are removed; case-insensitive duplicate company names keep their first record.")
+    st.write("Employee ranges remain text. Industry labels are split only for frequency analysis. No model training or credibility scoring is performed.")
     with st.expander("Full cleaning report"):
         st.json(retriever.report)
     st.caption("CSV record IDs count logical records including the header as record 1; they are not physical line numbers when quoted cells contain line breaks. The original Sr.No. column, when present, is not used as a unique identifier.")
@@ -139,11 +154,10 @@ def render_audit(retriever):
 
 
 def render_explore(df):
-    section("Explore the dataset", "Filter by city and industry, then dig into funding and categories.")
-    with st.container(border=True):
-        a, b = st.columns(2)
-        cities = a.multiselect("City", sorted(df.loc[df.City.ne(""), "City"].unique()), placeholder="All cities")
-        industry = b.text_input("Industry contains", placeholder="FinTech, Education, Health Care...")
+    section("Explore the dataset", "Filter by city and industry, then look at funding and categories.")
+    a, b = st.columns(2)
+    cities = a.multiselect("City", sorted(df.loc[df.City.ne(""), "City"].unique()), placeholder="All cities")
+    industry = b.text_input("Industry contains", placeholder="FinTech, Education, Health Care...")
     view = df.copy()
     if cities:
         view = view.loc[view.City.isin(cities)]
@@ -151,13 +165,13 @@ def render_explore(df):
         view = view.loc[view.Industries.str.contains(industry.strip(), case=False, regex=False)]
     known = view[FUNDING].dropna()
     stat_cards([
-        ("🎯", "Matching startups", f"{len(view):,}"),
-        ("💵", "Total reported funding", f"${known.sum():,.0f}" if not known.empty else "N/A"),
-        ("📈", "Median funding", f"${known.median():,.0f}" if not known.empty else "N/A"),
-        ("🧾", "Known funding entries", f"{len(known)} / {len(view)}"),
+        ("Matching startups", f"{len(view):,}"),
+        ("Total reported funding", f"${known.sum():,.0f}" if not known.empty else "N/A"),
+        ("Median funding", f"${known.median():,.0f}" if not known.empty else "N/A"),
+        ("Known funding entries", f"{len(known)} / {len(view)}"),
     ])
     if view.empty:
-        empty_state("🔍", "No startups match these filters", "Clear a city or try a broader industry term.")
+        empty_state("No startups match these filters", "Clear a city or try a broader industry term.")
         return
     directory, cards, charts, top = st.tabs(["Table", "Cards", "Charts", "Top funded"])
     with directory:
@@ -172,23 +186,21 @@ def render_explore(df):
     with charts:
         left, right = st.columns(2)
         with left:
-            with st.container(border=True):
-                st.markdown("##### Top cities")
-                counts = view.loc[view.City.ne(""), "City"].value_counts().head(10)
-                if counts.empty:
-                    st.caption("No city data in this selection.")
-                else:
-                    st.bar_chart(counts, color="#6366f1")
+            st.markdown("##### Top cities")
+            counts = view.loc[view.City.ne(""), "City"].value_counts().head(10)
+            if counts.empty:
+                st.caption("No city data in this selection.")
+            else:
+                st.bar_chart(counts, color="#1f3a4d")
         with right:
-            with st.container(border=True):
-                st.markdown("##### Top industry labels")
-                labels = view.Industries.str.split(",").explode().str.strip()
-                counts = labels.loc[labels.ne("")].value_counts().head(10)
-                if counts.empty:
-                    st.caption("No industry data in this selection.")
-                else:
-                    st.bar_chart(counts, color="#14b8a6")
-                st.caption("Multi-label: one company can appear in several categories.")
+            st.markdown("##### Top industry labels")
+            labels = view.Industries.str.split(",").explode().str.strip()
+            counts = labels.loc[labels.ne("")].value_counts().head(10)
+            if counts.empty:
+                st.caption("No industry data in this selection.")
+            else:
+                st.bar_chart(counts, color="#9a7b4f")
+            st.caption("Multi-label: one company can appear in several categories.")
     with top:
         table(view.dropna(subset=[FUNDING]).nlargest(10, FUNDING)[["source_row", "Company", FUNDING, "Funding Round", "No. of Investors"]])
     st.caption("These describe only the selected dataset records, not the Indian startup population or a market-size estimate. Missing funding is excluded; recorded zero values are retained.")
@@ -201,7 +213,7 @@ def render_compare(retriever):
         st.session_state["cmp_key"] = tuple(sorted(chosen))
         st.session_state.pop("cmp_answer", None)
     if len(chosen) < 2:
-        empty_state("⚖️", "Pick at least two companies", "Comparison uses exact selections, not approximate text search.")
+        empty_state("Pick at least two companies", "Comparison uses exact selections, not approximate text search.")
         return
     comparison = retriever.compare(chosen)
     for column, (_, row) in zip(st.columns(len(comparison)), comparison.iterrows()):
@@ -219,25 +231,24 @@ def render_compare(retriever):
 
 def render_qa(retriever):
     section("Investor Q&A", "Evidence-backed research. Retrieval is lexical TF-IDF, not a full-dataset SQL engine.")
-    with st.container(border=True):
-        mode = st.selectbox("Query mode", list(QUERY_MODES.keys()))
-        question = None
-        if mode == "Free-form question":
-            question = st.text_input("Ask a question about the startups in this dataset", placeholder="fintech payments; healthcare in Bengaluru; education startups")
-        elif mode == "Find startups by sector":
-            sector = st.text_input("Sector", placeholder="Healthcare, Agritech, Fintech")
-            question = QUERY_MODES[mode].format(sector=sector) if sector.strip() else None
-        elif mode == "Compare two startups":
-            c1, c2 = st.columns(2)
-            a, b = c1.text_input("Startup A name"), c2.text_input("Startup B name")
-            question = QUERY_MODES[mode].format(a=a, b=b) if a.strip() and b.strip() else None
-        else:
-            thesis = st.text_area("Describe your investment thesis", placeholder="B2B SaaS in Bengaluru with strong investor interest")
-            question = QUERY_MODES[mode].format(thesis=thesis) if thesis.strip() else None
-        k = st.slider("Evidence records to retrieve (top-k)", 1, 10, 5)
-        go = st.button("Retrieve evidence and answer", type="primary")
+    mode = st.selectbox("Query mode", list(QUERY_MODES.keys()))
+    question = None
+    if mode == "Free-form question":
+        question = st.text_input("Ask a question about the startups in this dataset", placeholder="fintech payments; healthcare in Bengaluru; education startups")
+    elif mode == "Find startups by sector":
+        sector = st.text_input("Sector", placeholder="Healthcare, Agritech, Fintech")
+        question = QUERY_MODES[mode].format(sector=sector) if sector.strip() else None
+    elif mode == "Compare two startups":
+        c1, c2 = st.columns(2)
+        a, b = c1.text_input("Startup A name"), c2.text_input("Startup B name")
+        question = QUERY_MODES[mode].format(a=a, b=b) if a.strip() and b.strip() else None
+    else:
+        thesis = st.text_area("Describe your investment thesis", placeholder="B2B SaaS in Bengaluru with strong investor interest")
+        question = QUERY_MODES[mode].format(thesis=thesis) if thesis.strip() else None
+    k = st.slider("Number of rows to retrieve (top-k)", 1, 10, 5)
+    go = st.button("Get Answer", type="primary")
     if not go:
-        empty_state("💬", "Ask something to get started", "Pick a query mode, fill in the fields and press the button.")
+        empty_state("Ask a question", "Choose a query mode, fill in the fields and press Get Answer.")
         return
     if not question:
         notice("warn", "Fill in the fields above first.")
@@ -246,7 +257,7 @@ def render_qa(retriever):
     st.markdown("### Retrieved evidence")
     st.caption("Similarity measures text overlap, not investment quality. Answers cover the retrieved subset, not necessarily every relevant startup. Record citations show provenance but do not guarantee factual correctness.")
     if results.empty:
-        empty_state("🔍", "No matching records", "Try an industry, city or company name from the dataset.")
+        empty_state("No matching records", "Try an industry, city or company name from the dataset.")
     else:
         for rank, (_, row) in enumerate(results.iterrows(), start=1):
             startup_card(row, rank=rank, similarity=float(row["similarity"]))
@@ -255,4 +266,4 @@ def render_qa(retriever):
     with st.spinner("Preparing answer..."):
         answer = answer_question(question, results)
     answer_panel(answer)
-    notice("info", "Evidence still required for full diligence: pitch decks, audited financials, revenue/customer evidence, founder and legal records, independent funding sources, and dated market research for TAM/SAM/SOM.")
+    st.caption("Evidence still required for full diligence: pitch decks, audited financials, revenue/customer evidence, founder and legal records, independent funding sources, and dated market research for TAM/SAM/SOM.")
