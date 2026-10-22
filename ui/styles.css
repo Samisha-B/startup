@@ -1,0 +1,20 @@
+/* Presentation-only styles; no remote fonts, scripts, or hidden controls. */
+.block-container { max-width: 1320px; padding-top: 2.5rem; padding-bottom: 3rem; }
+h1 { font-weight: 750; letter-spacing: -0.045em; line-height: 1.12; max-width: 900px; }
+h2, h3 { letter-spacing: -0.025em; }
+[data-testid="stSidebar"] { border-right: 1px solid rgba(128, 128, 160, 0.18); }
+[data-testid="stVerticalBlockBorderWrapper"] { border-radius: 16px; }
+[data-testid="stMetricValue"] { letter-spacing: -0.04em; font-weight: 700; }
+[data-testid="stMetricLabel"] { opacity: 0.8; }
+.stButton button, .stDownloadButton button, .stFormSubmitButton button { border-radius: 10px; min-height: 2.7rem; }
+.stButton button[kind="primary"], .stFormSubmitButton button[kind="primary"] { background-color: #4f46e5; border-color: #4f46e5; color: #fff; }
+.stButton button[kind="primary"]:hover, .stFormSubmitButton button[kind="primary"]:hover { background-color: #4338ca; border-color: #4338ca; color: #fff; }
+[data-baseweb="tab-list"] { gap: 0.5rem; flex-wrap: wrap; margin-top: 1rem; margin-bottom: 1rem; }
+[data-baseweb="tab"] { border-radius: 8px 8px 0 0; padding: 0.65rem 1rem; }
+[data-baseweb="tab"][aria-selected="true"] { color: #6366f1; background: rgba(99, 102, 241, 0.09); }
+[data-testid="stDataFrame"] { border-radius: 12px; overflow: hidden; }
+@media (max-width: 768px) {
+  .block-container { padding: 1.5rem 1rem; }
+  h1 { font-size: 2rem; }
+  [data-baseweb="tab"] { padding: 0.5rem 0.65rem; }
+}
