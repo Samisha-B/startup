@@ -3,6 +3,7 @@ import pandas as pd
 import streamlit as st
 from retrieval import StartupRetriever, DATA_PATH, SOURCE, download_dataset
 from ui.components import apply_styles, sidebar_info, hero, notice, overview, render_audit, render_explore, render_compare, render_qa
+from ui.evaluate import render_evaluate
 
 st.set_page_config(page_title="Startup Diligence Copilot", layout="wide")
 apply_styles()
@@ -29,7 +30,7 @@ except (OSError, ValueError, RuntimeError, pd.errors.ParserError) as exc:
 
 sidebar_info(retriever)
 overview(retriever.df)
-quality, explore, compare, qa = st.tabs(["Data preparation", "Explore and analyse", "Compare startups", "Investor Q&A"])
+quality, explore, compare, qa, evaluate = st.tabs(["Data preparation", "Explore and analyse", "Compare startups", "Investor Q&A", "Evaluate a startup"])
 with quality:
     render_audit(retriever)
 with explore:
@@ -38,4 +39,6 @@ with compare:
     render_compare(retriever)
 with qa:
     render_qa(retriever)
+with evaluate:
+    render_evaluate(retriever)
 st.markdown('<div class="footer">Startup Diligence Copilot &middot; Dataset research &middot; Developed by Samisha Boywar</div>', unsafe_allow_html=True)
